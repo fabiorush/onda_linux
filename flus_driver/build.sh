@@ -1,0 +1,3 @@
+#!/bin/bash
+
+PATH="/home/flus/buildroot/output/host/bin:/home/flus/buildroot/output/host/usr/bin:/home/flus/buildroot/output/host/usr/sbin/:/home/flus/.rvm/gems/ruby-1.9.2-p290/bin:/home/flus/.rvm/gems/ruby-1.9.2-p290@global/bin:/home/flus/.rvm/rubies/ruby-1.9.2-p290/bin:/home/flus/.rvm/bin:/usr/local/bin:/usr/bin:/bin:/opt/bin:/usr/i686-pc-linux-gnu/gcc-bin/4.5.3" PERLLIB="/home/flus/buildroot/output/host/usr/lib/perl" /usr/bin/make -j4 HOSTCC="/usr/bin/gcc" HOSTCFLAGS="" ARCH=arm INSTALL_MOD_PATH=/home/flus/buildroot/output/target CROSS_COMPILE=" /home/flus/buildroot/output/host/usr/bin/arm-none-linux-gnueabi-" LZMA="/home/flus/buildroot/output/host/usr/bin/lzma" -C /home/flus/buildroot/output/build/linux-3.4.2 M=$PWD modules
