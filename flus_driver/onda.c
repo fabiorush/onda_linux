@@ -4,7 +4,7 @@
 //#include <linux/errno.h>
 #include <linux/interrupt.h>
 #include <asm/io.h>
-//#include <linux/delay.h>
+//#include "mux.h"
 #include <linux/device.h>
 #include <linux/gpio.h>
 
@@ -100,6 +100,8 @@ void /**gpio5,*/ *gpt3, *clock, *gpt9, *sys;
 u8 polarity = 0;
 u32 pincount = 0;
 u32 interval = 10;
+int teste = 0, teste2 = 1;
+int gpio = 1;
 
 //spinlock_t my_lock = SPIN_LOCK_UNLOCKED;
 
@@ -114,10 +116,16 @@ static ssize_t onda_interval_show(struct device *dev,
 static ssize_t onda_interval_store(struct device *dev,
                 struct device_attribute *attr, const char *buf, size_t size);
 
-static ssize_t onda_pwm_show(struct device *dev,
+/*static ssize_t onda_pwm_show(struct device *dev,
                 struct device_attribute *attr, char *buf);
 static ssize_t onda_pwm_store(struct device *dev,
-                struct device_attribute *attr, const char *buf, size_t size);
+                struct device_attribute *attr, const char *buf, size_t size);*/
+
+				
+//void short_do_tasklet (unsigned long);
+//DECLARE_TASKLET (short_tasklet, short_do_tasklet, 0);
+
+
 
 static struct class_attribute onda_class_attr[] = {
 	__ATTR(button_count, 0644, onda_pincount_show, NULL),
@@ -151,7 +159,7 @@ static ssize_t onda_interval_show(struct device *dev,
 
 	mutex_lock(&sysfs_lock);
 
-	status = sprintf(buf, "%d\n", interval);
+	status = sprintf(buf, "%d\n", gpio_get_value(138));//interval);
 
 	mutex_unlock(&sysfs_lock);
 	return status;
@@ -167,17 +175,25 @@ static ssize_t onda_interval_store(struct device *dev,
 	return size;
 }
 
-static irqreturn_t gpio_irq_handler(int irq, void *data)
+/*void short_do_tasklet (unsigned long unused)
 {
-	//if (in32(gpio5 + OMAP2420_GPIO_DATAIN) & (1 << 10)) {
-	if (gpio_get_value(138)) {
-		out32(gpt9 + OMAP3530_GPT_TCLR, (1<<12) | (1<<10) | (1<<7));
-		out32(gpt9 + OMAP3530_GPT_TISR, 2);
-		
-		/* set the pin 139 */
-		//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
-		gpio_set_value(139, 1);
-	} else {
+	gpio = gpio_get_value(138);
+}*/
+
+static irqreturn_t gpio_irq_handler_rise(int irq, void *data)
+{
+	out32(gpt9 + OMAP3530_GPT_TCLR, (1<<12) | (1<<10) | (1<<7));
+	out32(gpt9 + OMAP3530_GPT_TISR, 2);
+	
+	/* set the pin 139 */
+	//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+	gpio_set_value(139, 1);
+
+	return IRQ_HANDLED;
+}
+static irqreturn_t gpio_irq_handler_fall(int irq, void *data)
+{
+	if (gpio_get_value(138) == 0) {
 		unsigned int t;
 		/* clear the pin 139*/
 		//out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
@@ -194,9 +210,17 @@ static irqreturn_t gpio_irq_handler(int irq, void *data)
 
 		polarity = 0;
 		pincount++;
+	} else {
+		out32(gpt9 + OMAP3530_GPT_TCLR, (1<<12) | (1<<10) | (1<<7));
+		out32(gpt9 + OMAP3530_GPT_TISR, 2);
+		
+		/* set the pin 139 */
+		//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+		gpio_set_value(139, 1);
 	}
-	//out32(gpio5 + OMAP2420_GPIO_IRQSTATUS1, 1 << 10);
-	
+	//gpio = (~gpio) & 1;
+    //tasklet_schedule(&short_tasklet);
+
 	return IRQ_HANDLED;
 }
 
@@ -279,10 +303,11 @@ static int onda_init(void)
 	 * selecting pullup and mode 4 function - GPIO 138 */
 #define SYS_CONF	((4 << 16) | ((1 << 8) | (1<<3) | 4))
 #define SYS_MASK	~(0x10F010F)
-	l = (in32(sys + 0x168) &  SYS_MASK) | SYS_CONF;
+	/*l = (in32(sys + 0x168) &  SYS_MASK) | SYS_CONF;
 	//l = (in32(sys + 0x168) & ~(7<<16) ) | (4 << 16);
 	//out32(sys + 0x168, ((1<<3 | 4) << 16) | (1<<3) | 4);
-	out32(sys + 0x168, l);
+	out32(sys + 0x168, l); */
+	//omap_mux_init_gpio(138, OMAP_PIN_INPUT_PULLUP);
 	status = gpio_request(138, "button");
 	if (status != 0) {
 		printk(KERN_ALERT "gpio_request(138)\n");
@@ -309,12 +334,12 @@ static int onda_init(void)
 		return 0;
 	}
 	
-	status = gpio_direction_output(138, 1);
+	status = gpio_direction_output(139, 1);
 	if (status != 0) {
 		printk(KERN_ALERT "gpio_direction_output(138, 1)\n");
 		return 0;
 	}
-
+	
 	/* enabling interrupt on both levels on GPIO 139 */
 	/*out32(gpio5 + OMAP2420_GPIO_RISINGDETECT, l << 10);
 	out32(gpio5 + OMAP2420_GPIO_FALLINGDETECT, l << 10);
@@ -331,11 +356,16 @@ static int onda_init(void)
 	/* configuring PWM */
 	out32(gpt9 + OMAP3530_GPT_TCLR, (1<<12) | (1<<10) | (1<<7)); //-- PWM
 
-	status = request_irq(gpio_to_irq(138), gpio_irq_handler, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING, "gpio_irq_handler", NULL);
+	status = request_irq(gpio_to_irq(138), gpio_irq_handler_fall, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING, "gpio_irq_handler_fall", NULL);//&teste);
 	if (status != 0) {
-		printk(KERN_ALERT "Error in request_irq 33: %d\n", status);
+		printk(KERN_ALERT "Error in request_irq fall 33: %d\n", status);
 		return 0;
 	}
+	/*status = request_irq(gpio_to_irq(138), gpio_irq_handler_rise, IRQF_SHARED|IRQF_TRIGGER_HIGH, "gpio_irq_handler_rise", &teste2);
+	if (status != 0) {
+		printk(KERN_ALERT "Error in request_irq rise 33: %d\n", status);
+		return 0;
+	}*/
 	//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
 
 	printk(KERN_ALERT "Hello world\n");
