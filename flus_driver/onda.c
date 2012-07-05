@@ -4,7 +4,9 @@
 //#include <linux/errno.h>
 #include <linux/interrupt.h>
 #include <asm/io.h>
-#include <linux/delay.h>
+//#include <linux/delay.h>
+#include <linux/device.h>
+#include <linux/gpio.h>
 
 #define	OMAP3530_GPIO1_BASE			0x48310000
 #define	OMAP3530_GPIO2_BASE			0x49050000
@@ -93,7 +95,7 @@
 
 MODULE_LICENSE("Dual BSD/GPL");
 
-void *gpio5, *gpt3, *clock, *gpt9, *sys;
+void /**gpio5,*/ *gpt3, *clock, *gpt9, *sys;
 
 u8 polarity = 0;
 u32 pincount = 0;
@@ -101,18 +103,85 @@ u32 interval = 10;
 
 //spinlock_t my_lock = SPIN_LOCK_UNLOCKED;
 
+/* sysfs stuff */
+static DEFINE_MUTEX(sysfs_lock);
+
+static ssize_t onda_pincount_show(struct device *dev,
+                struct device_attribute *attr, char *buf);
+
+static ssize_t onda_interval_show(struct device *dev,
+                struct device_attribute *attr, char *buf);
+static ssize_t onda_interval_store(struct device *dev,
+                struct device_attribute *attr, const char *buf, size_t size);
+
+static ssize_t onda_pwm_show(struct device *dev,
+                struct device_attribute *attr, char *buf);
+static ssize_t onda_pwm_store(struct device *dev,
+                struct device_attribute *attr, const char *buf, size_t size);
+
+static struct class_attribute onda_class_attr[] = {
+	__ATTR(button_count, 0644, onda_pincount_show, NULL),
+	__ATTR(onda_interval, 0644, onda_interval_show, onda_interval_store),
+	__ATTR_NULL
+};
+
+static struct class onda_drv = {
+	.name = "onda",
+	.owner = THIS_MODULE,
+	.class_attrs = &onda_class_attr,
+};
+
+static ssize_t onda_pincount_show(struct device *dev,
+                struct device_attribute *attr, char *buf)
+{
+	ssize_t status;
+
+	mutex_lock(&sysfs_lock);
+
+	status = sprintf(buf, "%d\n", pincount);
+
+	mutex_unlock(&sysfs_lock);
+	return status;
+}
+
+static ssize_t onda_interval_show(struct device *dev,
+                struct device_attribute *attr, char *buf)
+{
+	ssize_t status;
+
+	mutex_lock(&sysfs_lock);
+
+	status = sprintf(buf, "%d\n", interval);
+
+	mutex_unlock(&sysfs_lock);
+	return status;
+}
+
+static ssize_t onda_interval_store(struct device *dev,
+                struct device_attribute *attr, const char *buf, size_t size)
+{
+	int value;
+	if (sscanf(buf,"%d\n", &value) > 0) {
+		interval = value;
+	}
+	return size;
+}
+
 static irqreturn_t gpio_irq_handler(int irq, void *data)
 {
-	if (in32(gpio5 + OMAP2420_GPIO_DATAIN) & (1 << 10)) {
+	//if (in32(gpio5 + OMAP2420_GPIO_DATAIN) & (1 << 10)) {
+	if (gpio_get_value(138)) {
 		out32(gpt9 + OMAP3530_GPT_TCLR, (1<<12) | (1<<10) | (1<<7));
 		out32(gpt9 + OMAP3530_GPT_TISR, 2);
 		
 		/* set the pin 139 */
-		out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+		//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+		gpio_set_value(139, 1);
 	} else {
 		unsigned int t;
 		/* clear the pin 139*/
-		out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
+		//out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
+		gpio_set_value(139, 0);
 		
 		/* setting the initial timer counter value
 		 * cada tick é 80ns */
@@ -126,7 +195,7 @@ static irqreturn_t gpio_irq_handler(int irq, void *data)
 		polarity = 0;
 		pincount++;
 	}
-	out32(gpio5 + OMAP2420_GPIO_IRQSTATUS1, 1 << 10);
+	//out32(gpio5 + OMAP2420_GPIO_IRQSTATUS1, 1 << 10);
 	
 	return IRQ_HANDLED;
 }
@@ -135,9 +204,11 @@ static irqreturn_t gpio_irq_handler(int irq, void *data)
 static irqreturn_t timer_irq_handler(int irq, void *data)
 {
 	if (polarity)
-		out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
+		gpio_set_value(139, 0);
+		//out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
 	else
-		out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+		gpio_set_value(139, 1);
+		//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
 
 	polarity = (~polarity) & 1;
 	//out32(gpt3 + OMAP3530_GPT_TISR, 2);
@@ -150,11 +221,15 @@ static int onda_init(void)
 {
 	u32 l;
 
-	gpio5 = ioremap(OMAP3530_GPIO5_BASE, OMAP3530_GPIO_SIZE);
+	int status = class_register(&onda_drv);
+	if(status < 0)
+		printk("Registering Class Failed\n");
+
+	/*gpio5 = ioremap(OMAP3530_GPIO5_BASE, OMAP3530_GPIO_SIZE);
 	if (!gpio5) {
 		printk(KERN_ERR "Cannot map ioport gpio5");
 		return 0;
-	}
+	}*/
 	//gpt3 = ioport_map(OMAP3530_GPT3_BASE, OMAP3530_GPT_SIZE);
 	gpt9 = ioremap(OMAP3530_GPT9_BASE, OMAP3530_GPT_SIZE);
 	if (!gpt9) {
@@ -178,15 +253,24 @@ static int onda_init(void)
 	printk(KERN_ALERT "ioport_map2\n");
 
 	/* enabling clocks */
-	l = ioread32(clock) | (1<<16) | (1<<4) | (1<<10);
+	l = ioread32(clock) /*| (1<<16)*/ | (1<<4) | (1<<10);
 	iowrite32(l, clock);
 
-	l = ioread32(clock + 0x10) | (1<<16) | (1<<4) | (1<<10);
+	l = ioread32(clock + 0x10) /*| (1<<16)*/ | (1<<4) | (1<<10);
 	iowrite32(l, clock + 0x10);
 
-	request_irq(45, timer_irq_handler, 0, "timer_irq_handler", NULL);
+	status = request_irq(45, timer_irq_handler, 0, "timer_irq_handler", NULL);
+	if (status != 0) {
+		printk(KERN_ALERT "Error in request_irq 45\n");
+		return 0;
+	}
 
-	request_irq(33, gpio_irq_handler, 0, "gpio_irq_handler", NULL);
+	//status = request_irq(33, gpio_irq_handler, 0, "gpio_irq_handler", NULL);
+	/*status = request_irq(33, gpio_irq_handler, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING, "gpio_irq_handler", NULL);
+	if (status != 0) {
+		printk(KERN_ALERT "Error in request_irq 33: %d\n", status);
+		return 0;
+	}*/
 
 	printk(KERN_ALERT "request_irq\n");
 
@@ -199,6 +283,17 @@ static int onda_init(void)
 	//l = (in32(sys + 0x168) & ~(7<<16) ) | (4 << 16);
 	//out32(sys + 0x168, ((1<<3 | 4) << 16) | (1<<3) | 4);
 	out32(sys + 0x168, l);
+	status = gpio_request(138, "button");
+	if (status != 0) {
+		printk(KERN_ALERT "gpio_request(138)\n");
+		return 0;
+	}
+	
+	status = gpio_request(139, "onda");
+	if (status != 0) {
+		printk(KERN_ALERT "gpio_request(139)\n");
+		return 0;
+	}
 
 	/* setting mode 2 - PWM */
 	l = (in32(sys + 0x174) & ~7 ) | 2;
@@ -206,14 +301,26 @@ static int onda_init(void)
 
 	/* setting the PIN 138 to input
 	 * setting the PIN 139 to output */
-	l = (in32(gpio5 + OMAP2420_GPIO_OE) & ~(1 << 11)) | 1 << 10;
-	out32(gpio5 + OMAP2420_GPIO_OE, l);
+	/*l = (in32(gpio5 + OMAP2420_GPIO_OE) & ~(1 << 11)) | 1 << 10;
+	out32(gpio5 + OMAP2420_GPIO_OE, l);*/
+	status = gpio_direction_input(138);
+	if (status != 0) {
+		printk(KERN_ALERT "gpio_direction_input(138)\n");
+		return 0;
+	}
 	
-	/* enabling interrupt on both levels on GPIO 139 */
-	out32(gpio5 + OMAP2420_GPIO_RISINGDETECT, l << 10);
-	out32(gpio5 + OMAP2420_GPIO_FALLINGDETECT, l << 10);
-	out32(gpio5 + OMAP2420_GPIO_SETIRQENABLE1, l << 10);
+	status = gpio_direction_output(138, 1);
+	if (status != 0) {
+		printk(KERN_ALERT "gpio_direction_output(138, 1)\n");
+		return 0;
+	}
 
+	/* enabling interrupt on both levels on GPIO 139 */
+	/*out32(gpio5 + OMAP2420_GPIO_RISINGDETECT, l << 10);
+	out32(gpio5 + OMAP2420_GPIO_FALLINGDETECT, l << 10);
+	out32(gpio5 + OMAP2420_GPIO_SETIRQENABLE1, l << 10);*/
+
+	
 	/* make sure timer has stop */
 	//out32(gpt3 + OMAP3530_GPT_TCLR, 0);
 	out32(gpt9 + OMAP3530_GPT_TCLR, 0);
@@ -224,7 +331,12 @@ static int onda_init(void)
 	/* configuring PWM */
 	out32(gpt9 + OMAP3530_GPT_TCLR, (1<<12) | (1<<10) | (1<<7)); //-- PWM
 
-	out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+	status = request_irq(gpio_to_irq(138), gpio_irq_handler, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING, "gpio_irq_handler", NULL);
+	if (status != 0) {
+		printk(KERN_ALERT "Error in request_irq 33: %d\n", status);
+		return 0;
+	}
+	//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
 
 	printk(KERN_ALERT "Hello world\n");
 
@@ -235,10 +347,11 @@ static void onda_exit(void)
 	iowrite32(0, gpt3 + OMAP3530_GPT_TCLR);
 	iowrite32(0, gpt3 + OMAP3530_GPT_TIER);
 	free_irq(39, NULL);
-	iowrite32((1 << 11), gpio5 + OMAP2420_GPIO_SETDATAOUT);
+	//iowrite32((1 << 11), gpio5 + OMAP2420_GPIO_SETDATAOUT);
 	//printk(KERN_ALERT "Timer when removing the kernel: %x\n", ioread32(gpt3 + OMAP3530_GPT_TCRR) & 0xff);
-	iounmap(gpio5);
-	iounmap(gpt3);
+	//iounmap(gpio5);
+	iounmap(gpt9);
+	class_unregister(&onda_drv);
 	printk(KERN_ALERT "Goodbye, cruel world\n");
 }
 module_init(onda_init);
