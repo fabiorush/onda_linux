@@ -20,14 +20,14 @@ null::sysinit:/bin/mount /sys
 null::sysinit:/bin/mount /dev
 ::sysinit:/sbin/mdev -s
 null::sysinit:/bin/mkdir -p /dev/pts
+null::sysinit:/bin/ln -s /dev/ttyLv0 /dev/ttyO2
 null::sysinit:/bin/mount -a
 null::sysinit:/bin/hostname -F /etc/hostname
 # now run any rc scripts
 ::sysinit:/etc/init.d/rcS
+ttyO2::sysinit:/bin/bash -i
 
 # Put a getty on the serial port
-#ttyO2::respawn:/sbin/getty -L ttyO2 115200 vt100 # GENERIC_SERIAL
-console::respawn:/sbin/getty -L ttyO2 115200 vt100 # GENERIC_SERIAL
 
 # Logging junk
 null::sysinit:/bin/touch /var/log/messages

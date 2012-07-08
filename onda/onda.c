@@ -95,7 +95,7 @@
 
 MODULE_LICENSE("Dual BSD/GPL");
 
-void /**gpio5,*/ *gpt3, *clock, *gpt9, *sys;
+void *gpio5, *gpt3, *clock, *gpt9, *sys;
 
 u8 polarity = 0;
 u32 pincount = 0;
@@ -180,24 +180,14 @@ static ssize_t onda_interval_store(struct device *dev,
 	gpio = gpio_get_value(138);
 }*/
 
-static irqreturn_t gpio_irq_handler_rise(int irq, void *data)
-{
-	out32(gpt9 + OMAP3530_GPT_TCLR, (1<<12) | (1<<10) | (1<<7));
-	out32(gpt9 + OMAP3530_GPT_TISR, 2);
-	
-	/* set the pin 139 */
-	//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
-	gpio_set_value(139, 1);
-
-	return IRQ_HANDLED;
-}
 static irqreturn_t gpio_irq_handler_fall(int irq, void *data)
 {
-	if (gpio_get_value(138) == 0) {
+	//if (gpio_get_value(138) == 0) {
+	if ((in32(gpio5 + OMAP2420_GPIO_DATAIN) & (1 << 10)) == 0) {
 		unsigned int t;
 		/* clear the pin 139*/
-		//out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
-		gpio_set_value(139, 0);
+		out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
+		//gpio_set_value(139, 0);
 		
 		/* setting the initial timer counter value
 		 * cada tick é 80ns */
@@ -215,8 +205,8 @@ static irqreturn_t gpio_irq_handler_fall(int irq, void *data)
 		out32(gpt9 + OMAP3530_GPT_TISR, 2);
 		
 		/* set the pin 139 */
-		//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
-		gpio_set_value(139, 1);
+		out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+		//gpio_set_value(139, 1);
 	}
 	//gpio = (~gpio) & 1;
     //tasklet_schedule(&short_tasklet);
@@ -228,11 +218,11 @@ static irqreturn_t gpio_irq_handler_fall(int irq, void *data)
 static irqreturn_t timer_irq_handler(int irq, void *data)
 {
 	if (polarity)
-		gpio_set_value(139, 0);
-		//out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
+		//gpio_set_value(139, 0);
+		out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
 	else
-		gpio_set_value(139, 1);
-		//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+		//gpio_set_value(139, 1);
+		out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
 
 	polarity = (~polarity) & 1;
 	//out32(gpt3 + OMAP3530_GPT_TISR, 2);
@@ -249,11 +239,11 @@ static int onda_init(void)
 	if(status < 0)
 		printk("Registering Class Failed\n");
 
-	/*gpio5 = ioremap(OMAP3530_GPIO5_BASE, OMAP3530_GPIO_SIZE);
+	gpio5 = ioremap(OMAP3530_GPIO5_BASE, OMAP3530_GPIO_SIZE);
 	if (!gpio5) {
 		printk(KERN_ERR "Cannot map ioport gpio5");
 		return 0;
-	}*/
+	}
 	//gpt3 = ioport_map(OMAP3530_GPT3_BASE, OMAP3530_GPT_SIZE);
 	gpt9 = ioremap(OMAP3530_GPT9_BASE, OMAP3530_GPT_SIZE);
 	if (!gpt9) {
