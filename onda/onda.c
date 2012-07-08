@@ -159,7 +159,7 @@ static ssize_t onda_interval_show(struct device *dev,
 
 	mutex_lock(&sysfs_lock);
 
-	status = sprintf(buf, "%d\n", gpio_get_value(138));//interval);
+	status = sprintf(buf, "%d\n", interval);
 
 	mutex_unlock(&sysfs_lock);
 	return status;
@@ -180,7 +180,7 @@ static ssize_t onda_interval_store(struct device *dev,
 	gpio = gpio_get_value(138);
 }*/
 
-static irqreturn_t gpio_irq_handler_fall(int irq, void *data)
+static irqreturn_t gpio_irq_handler(int irq, void *data)
 {
 	//if (gpio_get_value(138) == 0) {
 	if ((in32(gpio5 + OMAP2420_GPIO_DATAIN) & (1 << 10)) == 0) {
@@ -346,7 +346,7 @@ static int onda_init(void)
 	/* configuring PWM */
 	out32(gpt9 + OMAP3530_GPT_TCLR, (1<<12) | (1<<10) | (1<<7)); //-- PWM
 
-	status = request_irq(gpio_to_irq(138), gpio_irq_handler_fall, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING, "gpio_irq_handler_fall", NULL);//&teste);
+	status = request_irq(gpio_to_irq(138), gpio_irq_handler, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING, "gpio_irq_handler", NULL);//&teste);
 	if (status != 0) {
 		printk(KERN_ALERT "Error in request_irq fall 33: %d\n", status);
 		return 0;
