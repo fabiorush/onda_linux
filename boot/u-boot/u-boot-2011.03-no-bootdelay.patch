@@ -1,0 +1,11 @@
+--- u-boot-2011.03/include/configs/omap3_beagle.h	2012-07-06 15:32:12.717592250 +0000
++++ omap3_beagle.h	2012-07-06 15:33:06.476916402 +0000
+@@ -184,7 +184,7 @@
+ 							/* partition */
+ 
+ /* Environment information */
+-#define CONFIG_BOOTDELAY		3
++#define CONFIG_BOOTDELAY		0
+ 
+ #define CONFIG_EXTRA_ENV_SETTINGS \
+ 	"loadaddr=0x82000000\0" \
