@@ -20,12 +20,11 @@ null::sysinit:/bin/mount /sys
 null::sysinit:/bin/mount /dev
 ::sysinit:/sbin/mdev -s
 null::sysinit:/bin/mkdir -p /dev/pts
-null::sysinit:/bin/ln -s /dev/ttyLv0 /dev/ttyO2
 null::sysinit:/bin/mount -a
 null::sysinit:/bin/hostname -F /etc/hostname
 # now run any rc scripts
 ::sysinit:/etc/init.d/rcS
-ttyO2::sysinit:/bin/bash -i
+ttyO2::sysinit:/bin/bash --login
 
 # Put a getty on the serial port
 

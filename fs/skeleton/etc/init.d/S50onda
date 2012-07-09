@@ -1,0 +1,15 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+SYSTEM=`uname -r`
+
+if [ $SYSTEM == "3.4.4" ]
+then
+  modprobe onda
+else
+  ln -s /dev/ttyLv0 /dev/ttyO2
+fi
+
+lighttpd -f /etc/lighttpd/lighttpd.conf
