@@ -1,47 +1,9 @@
 #include <linux/init.h>
 #include <linux/module.h>
-//#include <linux/kernel.h>
-//#include <linux/errno.h>
 #include <linux/interrupt.h>
 #include <asm/io.h>
-//#include "mux.h"
 #include <linux/device.h>
 #include <linux/gpio.h>
-
-#define	OMAP3530_GPIO1_BASE			0x48310000
-#define	OMAP3530_GPIO2_BASE			0x49050000
-#define	OMAP3530_GPIO3_BASE			0x49052000
-#define	OMAP3530_GPIO4_BASE			0x49054000
-#define	OMAP3530_GPIO5_BASE			0x49056000
-#define	OMAP3530_GPIO6_BASE			0x49058000
-#define	OMAP3530_GPIO_SIZE			0x1000
-
-#define	OMAP2420_GPIO_REVISION		0x00
-#define	OMAP2420_GPIO_SYSCONFIG		0x10
-#define	OMAP2420_GPIO_SYSSTATUS		0x14
-#define	OMAP2420_GPIO_IRQSTATUS1	0x18
-#define	OMAP2420_GPIO_IRQENABLE1	0x1C
-#define	OMAP2420_GPIO_WAKEUPENABLE	0x20
-#define	OMAP2420_GPIO_IRQSTATUS2	0x28
-#define	OMAP2420_GPIO_IRQENABLE2	0x2C
-#define	OMAP2420_GPIO_CTRL			0x30
-#define	OMAP2420_GPIO_OE			0x34
-#define	OMAP2420_GPIO_DATAIN		0x38
-#define	OMAP2420_GPIO_DATAOUT		0x3C
-#define	OMAP2420_GPIO_LEVELDETECT0	0x40
-#define	OMAP2420_GPIO_LEVELDETECT1	0x44
-#define	OMAP2420_GPIO_RISINGDETECT	0x48
-#define	OMAP2420_GPIO_FALLINGDETECT	0x4C
-#define	OMAP2420_GPIO_DEBOUNCENABLE	0x50
-#define	OMAP2420_GPIO_DEBOUNCINGTIME	0x54
-#define	OMAP2420_GPIO_CLEARIRQENABLE1	0x60
-#define	OMAP2420_GPIO_SETIRQENABLE1	0x64
-#define	OMAP2420_GPIO_CLEARIRQENABLE2	0x70
-#define	OMAP2420_GPIO_SETIRQENABLE2	0x74
-#define	OMAP2420_GPIO_CLEARWKUENA	0x80
-#define	OMAP2420_GPIO_SETWKUENA		0x84
-#define	OMAP2420_GPIO_CLEARDATAOUT	0x90
-#define	OMAP2420_GPIO_SETDATAOUT	0x94
 
 /*
  * General-Purpose Timer
@@ -95,15 +57,17 @@
 
 MODULE_LICENSE("Dual BSD/GPL");
 
-void *gpio5, *gpt3, *clock, *gpt9, *sys;
+void *clock, *gpt9, *sys;
 
 u8 polarity = 0;
 u32 pincount = 0;
-u32 interval = 10;
+u32 interval = 20;
 int teste = 0, teste2 = 1;
 int gpio = 1;
 
-//spinlock_t my_lock = SPIN_LOCK_UNLOCKED;
+void tasklet_function(unsigned long data);
+
+DECLARE_TASKLET(tasklet_example, tasklet_function, 0);
 
 /* sysfs stuff */
 static DEFINE_MUTEX(sysfs_lock);
@@ -115,16 +79,6 @@ static ssize_t onda_interval_show(struct device *dev,
                 struct device_attribute *attr, char *buf);
 static ssize_t onda_interval_store(struct device *dev,
                 struct device_attribute *attr, const char *buf, size_t size);
-
-/*static ssize_t onda_pwm_show(struct device *dev,
-                struct device_attribute *attr, char *buf);
-static ssize_t onda_pwm_store(struct device *dev,
-                struct device_attribute *attr, const char *buf, size_t size);*/
-
-				
-//void short_do_tasklet (unsigned long);
-//DECLARE_TASKLET (short_tasklet, short_do_tasklet, 0);
-
 
 
 static struct class_attribute onda_class_attr[] = {
@@ -175,19 +129,12 @@ static ssize_t onda_interval_store(struct device *dev,
 	return size;
 }
 
-/*void short_do_tasklet (unsigned long unused)
-{
-	gpio = gpio_get_value(138);
-}*/
-
 static irqreturn_t gpio_irq_handler(int irq, void *data)
 {
-	//if (gpio_get_value(138) == 0) {
-	if ((in32(gpio5 + OMAP2420_GPIO_DATAIN) & (1 << 10)) == 0) {
+	if (gpio_get_value(138) == 0) {
 		unsigned int t;
 		/* clear the pin 139*/
-		out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
-		//gpio_set_value(139, 0);
+		gpio_set_value(139, 0);
 		
 		/* setting the initial timer counter value
 		 * cada tick é 80ns */
@@ -205,27 +152,21 @@ static irqreturn_t gpio_irq_handler(int irq, void *data)
 		out32(gpt9 + OMAP3530_GPT_TISR, 2);
 		
 		/* set the pin 139 */
-		out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
-		//gpio_set_value(139, 1);
+		gpio_set_value(139, 1);
+		tasklet_schedule(&tasklet_example);
 	}
-	//gpio = (~gpio) & 1;
-    //tasklet_schedule(&short_tasklet);
 
 	return IRQ_HANDLED;
 }
 
-//static irq_handler_t irq_handler(int irq, void *dev_id, struct pt_regs *regs)
 static irqreturn_t timer_irq_handler(int irq, void *data)
 {
 	if (polarity)
-		//gpio_set_value(139, 0);
-		out32(gpio5 + OMAP2420_GPIO_CLEARDATAOUT, (1 << 11));
+		gpio_set_value(139, 0);
 	else
-		//gpio_set_value(139, 1);
-		out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
+		gpio_set_value(139, 1);
 
 	polarity = (~polarity) & 1;
-	//out32(gpt3 + OMAP3530_GPT_TISR, 2);
 	out32(gpt9 + OMAP3530_GPT_TISR, 2);
 	
 	return IRQ_HANDLED;
@@ -239,12 +180,6 @@ static int onda_init(void)
 	if(status < 0)
 		printk("Registering Class Failed\n");
 
-	gpio5 = ioremap(OMAP3530_GPIO5_BASE, OMAP3530_GPIO_SIZE);
-	if (!gpio5) {
-		printk(KERN_ERR "Cannot map ioport gpio5");
-		return 0;
-	}
-	//gpt3 = ioport_map(OMAP3530_GPT3_BASE, OMAP3530_GPT_SIZE);
 	gpt9 = ioremap(OMAP3530_GPT9_BASE, OMAP3530_GPT_SIZE);
 	if (!gpt9) {
 		printk(KERN_ERR "Cannot map ioport gpt9");
@@ -261,11 +196,7 @@ static int onda_init(void)
 		return 0;
 	}
 
-	//gpio5 = ioremap(OMAP3530_GPIO5_BASE, OMAP3530_GPIO_SIZE);
-
 	
-	printk(KERN_ALERT "ioport_map2\n");
-
 	/* enabling clocks */
 	l = ioread32(clock) /*| (1<<16)*/ | (1<<4) | (1<<10);
 	iowrite32(l, clock);
@@ -279,25 +210,12 @@ static int onda_init(void)
 		return 0;
 	}
 
-	//status = request_irq(33, gpio_irq_handler, 0, "gpio_irq_handler", NULL);
-	/*status = request_irq(33, gpio_irq_handler, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING, "gpio_irq_handler", NULL);
-	if (status != 0) {
-		printk(KERN_ALERT "Error in request_irq 33: %d\n", status);
-		return 0;
-	}*/
-
-	printk(KERN_ALERT "request_irq\n");
 
 	/* setting the PIN 139 to output */
 	/* selecting mode 4 function - GPIO 139
 	 * selecting pullup and mode 4 function - GPIO 138 */
 #define SYS_CONF	((4 << 16) | ((1 << 8) | (1<<3) | 4))
 #define SYS_MASK	~(0x10F010F)
-	/*l = (in32(sys + 0x168) &  SYS_MASK) | SYS_CONF;
-	//l = (in32(sys + 0x168) & ~(7<<16) ) | (4 << 16);
-	//out32(sys + 0x168, ((1<<3 | 4) << 16) | (1<<3) | 4);
-	out32(sys + 0x168, l); */
-	//omap_mux_init_gpio(138, OMAP_PIN_INPUT_PULLUP);
 	status = gpio_request(138, "button");
 	if (status != 0) {
 		printk(KERN_ALERT "gpio_request(138)\n");
@@ -316,8 +234,6 @@ static int onda_init(void)
 
 	/* setting the PIN 138 to input
 	 * setting the PIN 139 to output */
-	/*l = (in32(gpio5 + OMAP2420_GPIO_OE) & ~(1 << 11)) | 1 << 10;
-	out32(gpio5 + OMAP2420_GPIO_OE, l);*/
 	status = gpio_direction_input(138);
 	if (status != 0) {
 		printk(KERN_ALERT "gpio_direction_input(138)\n");
@@ -330,14 +246,8 @@ static int onda_init(void)
 		return 0;
 	}
 	
-	/* enabling interrupt on both levels on GPIO 139 */
-	/*out32(gpio5 + OMAP2420_GPIO_RISINGDETECT, l << 10);
-	out32(gpio5 + OMAP2420_GPIO_FALLINGDETECT, l << 10);
-	out32(gpio5 + OMAP2420_GPIO_SETIRQENABLE1, l << 10);*/
-
 	
 	/* make sure timer has stop */
-	//out32(gpt3 + OMAP3530_GPT_TCLR, 0);
 	out32(gpt9 + OMAP3530_GPT_TCLR, 0);
 
 	/* enabling the interrupt */
@@ -351,14 +261,6 @@ static int onda_init(void)
 		printk(KERN_ALERT "Error in request_irq fall 33: %d\n", status);
 		return 0;
 	}
-	/*status = request_irq(gpio_to_irq(138), gpio_irq_handler_rise, IRQF_SHARED|IRQF_TRIGGER_HIGH, "gpio_irq_handler_rise", &teste2);
-	if (status != 0) {
-		printk(KERN_ALERT "Error in request_irq rise 33: %d\n", status);
-		return 0;
-	}*/
-	//out32(gpio5 + OMAP2420_GPIO_SETDATAOUT, (1 << 11));
-
-	printk(KERN_ALERT "Hello world\n");
 
 	return 0;
 }
@@ -367,12 +269,14 @@ static void onda_exit(void)
 	iowrite32(0, gpt3 + OMAP3530_GPT_TCLR);
 	iowrite32(0, gpt3 + OMAP3530_GPT_TIER);
 	free_irq(39, NULL);
-	//iowrite32((1 << 11), gpio5 + OMAP2420_GPIO_SETDATAOUT);
-	//printk(KERN_ALERT "Timer when removing the kernel: %x\n", ioread32(gpt3 + OMAP3530_GPT_TCRR) & 0xff);
-	//iounmap(gpio5);
 	iounmap(gpt9);
 	class_unregister(&onda_drv);
-	printk(KERN_ALERT "Goodbye, cruel world\n");
 }
+
+void tasklet_function(unsigned long data)
+{
+		gpio_set_value(139, 1);
+}
+
 module_init(onda_init);
 module_exit(onda_exit);
